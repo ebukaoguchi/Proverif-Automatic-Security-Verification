@@ -1,0 +1,109 @@
+(* Define cryptographic key and nonce types *)
+type key.
+type nonce.
+
+(* Define hash functions *)
+fun Hash(bitstring,key):bitstring.
+fun Hash1(nonce,key):bitstring.
+fun Hash2(nonce,nonce,key):bitstring.
+
+(* Define symmetric encryption and its reverse operation *)
+fun senc(bitstring,key):bitstring.
+reduc forall m:bitstring, k:key; sdec(senc(m,k),k) = m.
+
+(* Data Type Converters *)
+fun nonce_to_bitstring(nonce):bitstring [data,typeConverter].
+fun bitstring_to_nonce(bitstring):nonce [data,typeConverter].
+fun nonce_to_key(nonce):key [data,typeConverter].
+fun bitstring_to_key(bitstring):key [data,typeConverter].
+
+(* Define communication channel and private bitstrings *)
+free c:channel.
+free k_s:bitstring [private].
+free test:bitstring [private].
+
+(* Define events for server and IoT device communication *)
+event serverAccepts(key).
+event serverTerms(key).
+event IoTdeviceAccepts(key).
+event IoTdeviceTerms(key).
+
+(* Define queries to check for attacker influence *)
+query attacker(test).
+query k:key; inj-event(IoTdeviceTerms(k)) ==> inj-event(serverAccepts(k)).
+query k:key; inj-event(serverTerms(k)) ==> inj-event(IoTdeviceAccepts(k)).
+
+(* Define private bitstrings for attacker queries *)
+free secretAN1,secretAN2:bitstring [private].
+free secretBN1,secretBN2:bitstring [private].
+query attacker(secretAN1); attacker(secretAN2);
+	  attacker(secretBN1);attacker(secretBN2).
+
+
+(* Define behavior of the IoT device *)
+let IoTdevice(k_ma:key) = 
+    (* Generate a new nonce *)
+    new N1:nonce;
+    (* Calculate the first hash using the nonce and master key *)
+    let h = Hash1(N1,k_ma) in
+    (* Encrypt the nonce and send it along with the hash *)
+    let m = senc(nonce_to_bitstring(N1),k_ma) in
+    out(c,(m,h));
+    (* Receive the encrypted message from the server *)
+    in(c,(m2:bitstring,h2:bitstring));
+    (* Decrypt the message to get the second nonce *)
+    let N2:bitstring = sdec(m2,k_ma) in
+     (* Check if the calculated hash matches the received hash *)
+    if Hash2(bitstring_to_nonce(N2),N1,k_ma) = h2 then 
+    (* Indicate acceptance in IoT device terms *)
+        event IoTdeviceAccepts(k_ma);
+        (* Generate a new nonce *)
+        new N3:nonce;
+        (* Calculate the third hash using nonces and the master key *)
+        let h3 = Hash2(N3,bitstring_to_nonce(N2),k_ma) in
+        (* Encrypt nonces and send them along with the hash *)
+        let m3 = senc((N3,N2),k_ma) in
+        out(c,(m3,h3));
+        (* Indicate terms in IoT device terms *)
+        event IoTdeviceTerms(k_ma);
+         (* Encrypt and send secret bitstrings with nonces as keys *)
+		out(c,senc(secretAN1,nonce_to_key(N1)));
+        out(c,senc(secretAN2,bitstring_to_key(N2))).
+
+
+(* Define behavior of the Key Trust Center (KTC) *)
+let KTC(k_ma:key) =
+    (* Receive the encrypted message from the IoT device *)
+    in(c,(m:bitstring,h:bitstring));
+    (* Decrypt the message to get the first nonce *)
+    let N1:bitstring = sdec(m,k_ma) in 
+    (* Check if the calculated hash matches the received hash *)
+    if Hash1(bitstring_to_nonce(N1),k_ma) = h then 
+    (* Indicate acceptance in server terms *)
+        event serverAccepts(k_ma);
+        (* Generate a new nonce *)
+        new N2:nonce;
+        (* Calculate the second hash using nonces and the master key *)
+        let h2 = Hash2(N2,bitstring_to_nonce(N1),k_ma) in
+         (* Encrypt the second nonce and send it along with the hash *)
+        let m2 = senc(nonce_to_bitstring(N2),k_ma) in
+        out(c,(m2,h2));
+        (* Receive the encrypted message from the IoT device *)
+        in(c,(m3:bitstring,h3:bitstring));
+        (* Decrypt the message to get nonces *)
+        let (N3:nonce,N2X:nonce) = sdec(m3,k_ma) in
+        (* Check if the calculated hash matches the received hash *)
+        if Hash2(N3,N2,k_ma) = h3 then 
+        (* Indicate terms in server terms *)
+            event serverTerms(k_ma);
+            (* Send a test message *)
+            out(c,test);
+             (* Encrypt and send secret bitstrings with nonces as keys *)
+			out(c,senc(secretBN1,bitstring_to_key(N1)));
+            out(c,senc(secretBN2,nonce_to_key(N2))).
+
+(* Define the main process *)
+process
+new k_ma:key;
+(* Execute the IoT device and KTC processes concurrently *)
+( (!IoTdevice(k_ma)) | (!KTC(k_ma)) )

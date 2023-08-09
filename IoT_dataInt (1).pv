@@ -1,0 +1,49 @@
+(* Define a cryptographic key type *)
+type key.
+
+(* Define a hash function *)
+fun Hash(bitstring):bitstring.
+
+
+(* Define symmetric encryption and its reverse operation *)
+fun senc(bitstring,key):bitstring.
+reduc forall m:bitstring,k:key; sdec(senc(m,k),k) = m.
+
+(* Define communication channel and private bitstring *)
+free c:channel.
+free m:bitstring [private].
+
+(* Define events for tracking changes *)
+event NoChangeA(bitstring).
+event NoChangeS(bitstring).
+
+(* Define queries to check for attacker's influence *)
+query attacker(m).
+query m:bitstring; event(NoChangeS(m))==>event(NoChangeA(m)).
+
+(* Define behavior of the IoT device *)
+let IoTdevice(msg:bitstring,k_ma:key) = 
+    (* Calculate the hash of the message *)
+    let h = Hash(msg) in
+    (* Encrypt the message and its hash using a master key *)
+    let y = senc((msg,h),k_ma) in
+    (* Indicate no change to the message in attacker query *)
+    event NoChangeA(msg);
+    (* Send the encrypted message through the communication channel *)
+    out(c,y).
+
+
+(* Define behavior of the server *)
+let server(k_ma:key) =
+    (* Receive the encrypted message from the IoT device *)
+    in(c,(y:bitstring));
+    (* Decrypt the message and its hash using the master key *)
+    let (msg:bitstring,h:bitstring) = sdec(y,k_ma) in
+    (* Check if the calculated hash matches the received hash *)
+    if Hash(msg) = h then event NoChangeS(msg).
+
+(* Define the main process *)
+process
+new k_ma:key;
+(* Execute the IoT device and server processes concurrently *)
+( (!IoTdevice(m,k_ma)) | (!server(k_ma)) )

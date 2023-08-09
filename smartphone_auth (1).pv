@@ -1,0 +1,121 @@
+(*Ebuka Philip Oguchi: Mutual authentication between the smartphone user and the server*)
+
+
+(* Define types and cryptographic operations *)
+(* Define communication channel *)
+free c:channel.
+
+(* Define types for cryptographic keys and hosts *)
+type key.
+type PRkey.
+type PUkey.
+type host.
+type nonce.
+(* Define hosts A and S for the smartphone user and server *)
+free A,S:host.
+
+(* Define cryptographic functions *)
+fun senc(bitstring,key):bitstring.
+reduc forall m:bitstring,k:key; sdec(senc(m,k),k) = m.
+
+(* Public key extraction *)
+fun pk(PRkey):PUkey.
+
+(* Asymmetric encryption *)
+fun aenc(bitstring,PUkey):bitstring.
+reduc forall m:bitstring,k:PRkey; adec(aenc(m,pk(k)),k) = m.
+
+(* Data Type Converters *)
+(* Convert a nonce to a bitstring *)
+fun nonce_to_bitstring(nonce):bitstring [data,typeConverter].
+(* Convert a nonce to a key *)
+fun nonce_to_key(nonce):key [data,typeConverter].
+
+
+(* Define authentication and communication events *)
+event smartPhoneAccepts(nonce,nonce,PUkey).
+event smartPhoneTerms(nonce,nonce,PUkey).
+event serverAccepts(nonce,nonce,PUkey).
+event serverTerms(nonce,nonce,PUkey).
+
+free s:bitstring [private].
+(* Attacker queries *)
+query attacker(s).
+query N1,N2:nonce,puX:PUkey; inj-event(smartPhoneTerms(N1,N2,puX)) ==> inj-event(serverAccepts(N1,N2,puX)).
+query N1,N2:nonce,puX:PUkey; inj-event(serverTerms(N1,N2,puX)) ==> inj-event(smartPhoneAccepts(N1,N2,puX)).
+
+
+(* Define secret bitstrings *)
+free secretAN1,secretAN2:bitstring [private].
+free secretBN1,secretBN2:bitstring [private].
+query attacker(secretAN1); attacker(secretAN2);
+	  attacker(secretBN1);attacker(secretBN2).
+
+
+(* Define behavior of the smartphone *)
+let smartPhone(puS:PUkey,prA:PRkey) =
+(* Smartphone receives public key of the server *)
+in(c,puX:PUkey);
+(* Check if received public key matches server's public key *)
+if puX = puS then
+(* Generate a new nonce for the smartphone *)
+new N1:nonce;
+(* Encrypt the nonce and smartphone's private key with server's public key *)
+let m = aenc((N1,pk(prA)),puX) in
+out(c,m);
+(* Receive the encrypted message from the server *)
+in(c,m2:bitstring);
+(* Decrypt the message to extract nonces and keys *)
+let (=N1,N2:nonce,puX2:PUkey) = adec(m2,prA) in
+if puX2 = puS then
+(* Smartphone accepts terms *)
+event smartPhoneAccepts(N1,N2,puX2);
+(* Encrypt the second nonce with smartphone's public key *)
+let m3 = aenc(nonce_to_bitstring(N2),puX2) in
+out(c,m3);
+(* Present terms to server *)
+event smartPhoneTerms(N1,N2,pk(prA));
+(* Encrypt and send secret bitstrings with nonces as keys *)
+out(c,senc(secretAN1,nonce_to_key(N1)));
+out(c,senc(secretAN2,nonce_to_key(N2))).
+
+
+
+(* Define behavior of the server *)
+let server(puA:PUkey,prS:PRkey) =
+(* Receive the encrypted message from the smartphone *)
+in(c,m:bitstring);
+(* Decrypt the message to extract nonce and smartphone's public key *)
+let (N1:nonce,puX:PUkey) = adec(m,prS) in
+(* Generate a new nonce for the server *)
+new N2:nonce;
+  (* Server accepts terms *)
+event serverAccepts(N1,N2,puX);
+(* Encrypt the nonces and server's public key with smartphone's public key *)
+let m2 = aenc((N1,N2,pk(prS)),puX) in
+out(c,m2);
+
+(* Receive the encrypted nonce from the smartphone *)
+in(c,m3:bitstring);
+
+(* Compare the decrypted nonce with the second generated nonce *)
+if nonce_to_bitstring(N2) = adec(m3,prS) then 
+(* Check if received public key matches smartphone's public key *)
+if puX = puA then
+(* Server presents terms to the smartphone *)
+event serverTerms(N1,N2,pk(prS));
+
+(* Encrypt and send secret bitstrings with nonces as keys *)
+out(c,senc(secretBN1,nonce_to_key(N1)));
+out(c,senc(secretBN2,nonce_to_key(N2))).
+
+(* Define the main process *)
+process
+new prA:PRkey; new prS:PRkey;
+
+(* Generate public keys from private keys *)
+let puA = pk(prA) in out(c,puA);
+let puS = pk(prS) in out(c,puS);
+
+(* Execute the smartphone and server processes concurrently *)
+( (! smartPhone(puS,prA)) | (! server(puA,prS)))
