@@ -23,6 +23,11 @@ For MACOS:
 • opam install proverif
 • opam depext proverif
 
+After installation
+Open the Cygwin64 Terminal, 
+cd proverif2.04
+./proverif IOT_auth_2.pv to run your proverif script. Make sure the script is in a directory where Proverif can see it.
+
 This project outlines 3 parts protocol design namely,
 1. Mutual authentication between the IoT and the server.
 2. Mutual authentication between the smartphone user and the server.
