@@ -26,7 +26,7 @@ For MACOS:
 After installation
 Open the Cygwin64 Terminal, 
 cd proverif2.04
-./proverif IOT_auth_2.pv to run your proverif script. Make sure the script is in a directory where Proverif can see it.
+./proverif IOT_auth_2.pv to run your proverif script. Make sure the script is in a directory where Proverif can see it. The correspondence assertions and results will be displayed on the terminal.
 
 This project outlines 3 parts protocol design namely,
 1. Mutual authentication between the IoT and the server.
@@ -34,3 +34,4 @@ This project outlines 3 parts protocol design namely,
 3. Data Integrity and Confidentiality for messages sent by the IoT devices to the server.
 The report written for this project can be provided on request via Email: oguchiebuka919@gmail.com.
  
+The project can be scaled to multiple IoT devices and servers if you so desire. The communication between the Smartphone user and the Server uses a public key (asymmetric cryptography) while The IoT and server use symmetric cryptography due to their lightweight nature.
